@@ -1,4 +1,4 @@
-# 🔐 Security Onion Home Lab — Attack Detection & Incident Response
+# 🔐 Security Onion Home Lab: Attack Detection & Incident Response
 
 ![Security Onion](https://img.shields.io/badge/Security_Onion-2.4.211-0052CC?style=for-the-badge)
 ![Blue Team](https://img.shields.io/badge/Blue_Team-SOC_Analysis-2ea44f?style=for-the-badge)
