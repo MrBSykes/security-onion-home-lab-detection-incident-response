@@ -1,242 +1,168 @@
-🔐 Security Onion Home Lab — Attack Detection & Incident Response
-Author: Bryan Sykes
-Date: April 2026
-Platform: Security Onion 2.4.211 | Oracle VirtualBox | Kali Linux
-Type: Blue Team | SOC Analysis | Threat Detection
+# 🔐 Security Onion Home Lab — Attack Detection & Incident Response
 
+![Security Onion](https://img.shields.io/badge/Security_Onion-2.4.211-0052CC?style=for-the-badge)
+![Blue Team](https://img.shields.io/badge/Blue_Team-SOC_Analysis-2ea44f?style=for-the-badge)
+![Status](https://img.shields.io/badge/Status-Complete-2ea44f?style=for-the-badge)
 
-📋 Project Overview
-This project demonstrates a full attack-and-detect simulation in a self-built home lab environment. Acting as both attacker (red team) and defender (blue team), I simulated a realistic threat scenario — network reconnaissance followed by a credential brute force attack — and detected, investigated, and documented it using enterprise-grade security tooling.
+**Author:** Bryan Sykes | **Date:** April 2026
+**Platform:** Security Onion 2.4.211 (EVAL) · Oracle VirtualBox · Kali Linux
+**Type:** Blue Team / SOC analysis / threat detection
 
-The result: 404 HIGH severity alerts generated and triaged, Zeek network logs correlated, and a formal SOC incident report produced — end to end.
+Full write-ups: [`docs/incident-report-IR-2026-0424-001.pdf`](docs/incident-report-IR-2026-0424-001.pdf) and [`docs/security-onion-setup-documentation.pdf`](docs/security-onion-setup-documentation.pdf)
 
+---
 
-🏗️ Lab Architecture
+## Project Overview
+
+This project is a full attack-and-detect simulation in a self-built home lab. I played both roles: attacker (red team) running network reconnaissance and a credential brute-force attempt, and defender (blue team) detecting, investigating, and documenting that activity in Security Onion.
+
+Result: Sigma generated 172 HIGH-severity alerts (the dashboard screenshot below shows this count; see [Note on alert counts](#note-on-alert-counts) for why the original write-ups say 404), Zeek network logs were correlated against them, and a formal SOC incident report was produced end to end.
+
+---
+
+## Lab Architecture
+
+```
 ┌─────────────────────────────────────────────┐
-
 │              Windows 11 Host PC              │
-
-│                                              │
-
-│  ┌──────────────────┐  ┌──────────────────┐ │
-
-│  │   Kali Linux VM  │  │ Security Onion VM│ │
-
-│  │  192.168.1.209   │  │  192.168.1.196   │ │
-
-│  │   (Attacker)     │  │   (Defender)     │ │
-
-│  └────────┬─────────┘  └────────┬─────────┘ │
-
-│           │                     │            │
-
-│           └──── Bridged ────────┘            │
-
-│              (Home Network LAN)              │
-
+│                                               │
+│  ┌──────────────────┐   ┌──────────────────┐ │
+│  │   Kali Linux VM  │   │ Security Onion VM│ │
+│  │  (Attacker)      │   │  (Defender)      │ │
+│  └────────┬─────────┘   └────────┬─────────┘ │
+│           │                      │            │
+│           └──── Bridged ─────────┘            │
+│              (home network LAN)               │
 └─────────────────────────────────────────────┘
+```
 
-Component
-Details
-Host OS
-Windows 11
-Hypervisor
-Oracle VirtualBox
-Attacker VM
-Kali Linux (Bridged Adapter — 192.168.1.209)
-Defender VM
-Security Onion 2.4.211 EVAL (Bridged Adapter — 192.168.1.196)
-Base OS (SO)
-Oracle Linux Server 9.7
-Detection Engine
-Suricata IDS + Sigma Rules + Zeek + Kibana
+| Component | Details |
+|---|---|
+| Host OS | Windows 11 |
+| Hypervisor | Oracle VirtualBox |
+| Attacker VM | Kali Linux, bridged adapter |
+| Defender VM | Security Onion 2.4.211 EVAL, bridged adapter |
+| Base OS (SO) | Oracle Linux Server 9.7 |
+| Detection engine | Suricata IDS + Sigma rules + Zeek + Kibana |
 
+IP addresses are on an isolated home-lab LAN segment and are omitted here; they're in the incident report PDF for anyone who wants the full technical detail.
 
+---
 
-🎯 Project Phases
-Phase 1 — Lab Setup & Configuration
-Installed Security Onion 2.4 in EVAL mode on VirtualBox
-Configured bridged networking for host-accessible management IP
-Deployed Kali Linux as attacker VM on same network segment
-Verified bidirectional connectivity between VMs
-Phase 2 — Network Reconnaissance (Nmap)
-Executed four Nmap scan types from Kali against Security Onion:
+## Project Phases
 
-# Ping sweep — discover live hosts
+**Phase 1 — Lab setup.** Installed Security Onion 2.4 in EVAL mode, configured bridged networking for a host-accessible management IP, deployed Kali on the same segment, verified connectivity.
 
-nmap -sn 192.168.1.0/24
+**Phase 2 — Network reconnaissance.** Ran a set of Nmap scans from Kali against the Security Onion node (host discovery, service/version detection, OS fingerprinting). Finding: SSH (OpenSSH 8.7) was the only open service; the host fingerprinted as Linux.
 
-# Aggressive scan — ports, services, scripts, traceroute
+**Phase 3 — SSH brute force.** Ran a dictionary-based credential attack against SSH using Hydra and the rockyou wordlist. About 340 attempts were made before manual termination. Zero valid credentials were found — SSH held.
 
-nmap -A -T4 192.168.1.196
+**Phase 4 — Detection and investigation.** Switched to the defender role and investigated the activity in Security Onion.
 
-# Service version detection
+| Detection source | Finding |
+|---|---|
+| Sigma alerts | "Grid Node Login Failure (SSH)" — see [Note on alert counts](#note-on-alert-counts) |
+| Zeek DNS logs | 50 DNS query events attributed to the attacker IP |
+| Kibana | Cross-source correlation confirmed the full attacker timeline |
+| Alert window | 2026-04-24, roughly 73 minutes |
 
-nmap -sV --version-intensity 5 192.168.1.196
+**Phase 5 — Incident report.** Produced a formal SOC incident report: executive summary and severity, full attack timeline, technical analysis of both attack phases, an IOC table, detection evidence from every log source, and remediation recommendations.
 
-# OS fingerprinting
+---
 
-nmap -O 192.168.1.196
+## Indicators of Compromise (IOCs)
 
-Key findings: Port 22 (SSH/OpenSSH 8.7) open — 999 ports filtered — Linux OS confirmed
-Phase 3 — SSH Brute Force (Hydra)
-Executed dictionary-based credential attack against SSH using rockyou.txt:
+| IOC type | Value |
+|---|---|
+| Target port | 22 (TCP/SSH) |
+| Service targeted | OpenSSH 8.7 |
+| Username attacked | root |
+| Recon tool | Nmap 7.95 |
+| Brute-force tool | Hydra v9.5 |
+| Wordlist | rockyou.txt |
+| Attack window | ~73 minutes |
+| Outcome | 0 credentials compromised |
 
-hydra -l root -P /usr/share/wordlists/rockyou.txt ssh://192.168.1.196 -t 4 -V -w 10
+Source and target IPs are in the incident report PDF rather than repeated here.
 
-~340 attempts made before manual termination
-0 valid credentials found — SSH hardened against attack
-Attack generated significant authentication failure traffic
-Phase 4 — Detection & Investigation (Security Onion SOC)
-Switched to defender role — investigated all attack activity in Security Onion:
+---
 
-Detection Source
-Finding
-Sigma Alerts
-404 HIGH severity alerts — "Grid Node Login Failure (SSH)"
-Zeek DNS Logs
-50 DNS query events attributed to attacker IP (192.168.1.209)
-Kibana
-Cross-source log correlation confirmed full attacker timeline
-Alert Timestamps
-2026-04-24T22:33:00Z — 2026-04-24T22:37:21Z
+## Tools Used
 
-Phase 5 — Incident Report
-Produced a formal SOC incident report documenting:
+**Offensive:** Nmap 7.95 (recon and port scanning), Hydra v9.5 (SSH credential brute force), rockyou.txt (dictionary wordlist).
 
-Executive summary and severity assessment
-Full attack timeline with timestamps
-Technical analysis of both attack phases
-Indicators of Compromise (IOC) table
-Detection evidence from all log sources
-Remediation recommendations
+**Defensive:** Security Onion 2.4 (SIEM/NSM platform), Suricata (network IDS), Sigma (detection rules), Zeek (traffic analysis and protocol logging), Kibana (log visualization and cross-source investigation), Elasticsearch (log indexing and search).
 
-📄 View Full Incident Report
+---
 
+## Screenshots
 
-🔍 Indicators of Compromise (IOCs)
-IOC Type
-Value
-Attacker IP
-192.168.1.209
-Target IP
-192.168.1.196
-Target Port
-22 (TCP/SSH)
-Service Targeted
-OpenSSH 8.7
-Username Attacked
-root
-Attack Tool — Recon
-Nmap 7.95
-Attack Tool — Brute Force
-Hydra v9.5
-Wordlist Used
-rockyou.txt
-Total Alerts Generated
-404 HIGH severity
-Attack Window
-2026-04-24 21:24 – 22:37 UTC
+| # | Screenshot | What it shows |
+|---|---|---|
+| 00 | ![](screenshots/00-kali-desktop-session.png) | Kali desktop with an active terminal session |
+| 01 | ![](screenshots/01-event-data-agent-name.png) | Security Onion node identified in event data |
+| 02 | ![](screenshots/02-event-data-host-ip-address.png) | Query by Elastalert showing the defender node's addresses |
+| 03 | ![](screenshots/03-event-data-source-ip-address.png) | Attacker source address isolated in event data |
+| 04 | ![](screenshots/04-kali-linux-hydra-brute-force.png) | Hydra running the SSH brute-force attempt from Kali |
+| 05 | ![](screenshots/05-log-rates-per-minute-zeekdns.png) | Log ingest rates per minute across Zeek DNS, syslog, and SOC services |
+| 06 | ![](screenshots/06-security-onion-alerts-dashboard.png) | Alerts dashboard: 172 "Grid Node Login Failure (SSH)" alerts, high severity |
+| 07 | ![](screenshots/07-sigma-alert-timestamps.png) | Sigma alert detail with timestamp and severity fields |
 
+---
 
+## Troubleshooting Log
 
-🛠️ Tools Used
-Offensive (Attacker)
+| # | Issue | Root cause | Resolution |
+|---|---|---|---|
+| 1 | `VERR_ALREADY_EXISTS` on first boot | VirtualBox's unattended-install feature auto-generated kickstart files that conflicted with the Security Onion installer | Deleted the generated files, recreated the VM with "Skip Unattended Installation" checked |
+| 2 | Forgotten admin username | Username forgotten after the initial install | Booted into single-user mode via GRUB, remounted root read-write, listed `/home` to recover the username, reset the password |
+| 3 | Install failed, insufficient disk | Virtual disk was 100 GB, below Security Onion's 200 GB minimum | Recreated the VM with a 200 GB disk |
+| 4 | Web UI unreachable on NAT networking | NAT assigned an internal address unreachable from the host browser; port forwarding, host-only networking, and firewall commands didn't fix it | Switched the adapter to Bridged, then ran `so-ip-update` so Security Onion recognized the new address |
+| 5 | Kali couldn't reach Security Onion | Kali was on an Internal Network adapter while Security Onion was Bridged — different segments | Switched Kali to Bridged so both VMs got DHCP addresses on the same home-network subnet |
 
-Nmap 7.95 — Network reconnaissance and port scanning
-Hydra v9.5 — SSH credential brute force
-rockyou.txt — Dictionary wordlist (14.3M passwords)
+---
 
-Defensive (SOC Analyst)
+## Incident Report Summary
 
-Security Onion 2.4 — SIEM/NSM platform
-Suricata — Network intrusion detection (IDS)
-Sigma — Detection rule engine (404 alerts triggered)
-Zeek — Network traffic analysis and protocol logging
-Kibana — Log visualization and cross-source investigation
-Elasticsearch — Log indexing and search backend
+- **Incident ID:** IR-2026-0424-001
+- **Severity:** HIGH
+- **Detection engine:** Sigma
+- **Attack duration:** ~73 minutes
+- **Outcome:** Attack fully detected, 0 credentials compromised, status closed as a simulated lab exercise
 
+---
 
-🚧 Troubleshooting Documentation
-This project required extensive troubleshooting during the Security Onion setup phase. Every issue encountered is fully documented as a learning reference.
-Issue 1 — VERR_ALREADY_EXISTS on First Boot
-Cause: VirtualBox's Unattended Installation feature auto-generated kickstart files (ks.cfg and .viso) that conflicted with Security Onion's own installer.
-Fix: Deleted Unattended-*.cfg and Unattended-*.viso files from the VM directory. Recreated VM with Skip Unattended Installation checked.
-Prevention: Always check Skip Unattended Installation when creating VMs for Security Onion.
+## Note on alert counts
 
+The original incident report and setup documentation (both still in `docs/`) report 404 Sigma alerts. The alerts dashboard screenshot in this repo shows **172** alerts for the same "Grid Node Login Failure (SSH)" rule. I'm flagging the discrepancy here rather than picking one number silently — if you're the one reading this for a hiring decision, the dashboard screenshot is the primary evidence; the PDFs may reflect a different query window or an alert count taken at a different point in triage.
 
-Issue 2 — Forgotten Admin Username
-Cause: Admin username forgotten after initial OS install.
-Fix: Booted into single-user mode via GRUB editor:
+---
 
-# In GRUB, edit the linux line — add to end:
+## Skills Demonstrated
 
-rw init=/bin/bash
+Network intrusion detection (IDS), SIEM alert triage and investigation, network traffic analysis (Zeek), log correlation across multiple sources (Kibana/Elasticsearch), threat detection and incident response, network reconnaissance technique recognition, credential-attack recognition, Linux system administration (Oracle Linux and Kali), virtual network architecture, the SOC analyst workflow from detection through documentation, and formal incident report writing.
 
-# After booting to shell:
+---
 
-mount -o remount,rw /
+## Repository Layout
 
-ls /home                    # revealed username
+```
+.
+├── README.md
+├── docs/
+│   ├── incident-report-IR-2026-0424-001.pdf
+│   └── security-onion-setup-documentation.pdf
+└── screenshots/
+```
 
-passwd [username]           # reset password
+---
 
-sync
+## Related Projects
 
-exec /sbin/init             # reboot normally
+- [Active Directory Home Lab: Phase 2, Attack Simulation & Detection](https://github.com/MrBSykes/active-directory-home-lab-phase-2-attack-simulation-and-detection)
+- [AWS GuardDuty Threat Detection](https://github.com/MrBSykes/aws-guardduty-threat-detection)
 
+---
 
-Issue 3 — Installation Failed (Insufficient Disk)
-Cause: Virtual disk was 100 GB — below Security Onion's 200 GB minimum.
-Fix: Deleted VM entirely and recreated with 200 GB virtual disk.
-Lesson: Security Onion stores full PCAPs and ELK data — storage requirements are non-negotiable.
-
-
-Issue 4 — Web UI Inaccessible (NAT Network Mode)
-Cause: Adapter 1 set to NAT assigned an internal 10.0.2.x address unreachable from the Windows host browser.
-Attempted: Port forwarding, Host-Only adapter, so-allow, so-firewall commands, iptables flush — none resolved it.
-Fix: Changed Adapter 1 to Bridged Adapter (Realtek PCIe GbE Family Controller), then ran:
-
-sudo so-ip-update
-
-This updated Security Onion's internal configuration to recognize the new bridged IP (192.168.1.196).
-
-
-Issue 5 — Kali VM Could Not Reach Security Onion
-Cause: Initial setup used Internal Network adapter type with static IPs, but Security Onion was configured on Bridged adapter — different network segments.
-Fix: Changed Kali's adapter to Bridged Adapter matching Security Onion's network mode. Both VMs received DHCP addresses from the home router on the same 192.168.1.0/24 subnet.
-
-
-📋 Incident Report Summary
-Incident ID: IR-2026-0424-001
-Severity: HIGH
-Alerts Generated: 404
-Detection Engine: Sigma
-Attack Duration: ~73 minutes (21:24 – 22:37 UTC)
-Outcome: Attack fully detected — 0 credentials compromised
-
-📄 View Full Incident Report
-📄 View Setup Documentation
-
-
-📚 Skills Demonstrated
-Network intrusion detection (IDS/IPS)
-SIEM alert triage and investigation
-Network traffic analysis (Zeek/Bro)
-Log correlation across multiple sources (Kibana/Elasticsearch)
-Threat detection and incident response
-Network reconnaissance techniques (Nmap)
-Credential attack simulation (Hydra)
-Linux system administration (Oracle Linux / Kali)
-Virtual network architecture design
-SOC analyst workflow — detection → investigation → documentation
-Formal incident report writing
-
-
-🔗 Related Projects
-More projects coming soon — check back for updates.
-
-
-
-Built and documented by Bryan Sykes | Northern Virginia | 2026
-Targeting roles in: SOC Analysis | IT Support | Cybersecurity | Blue Team Operations
+*Bryan Sykes | Northern Virginia | 2026*
+*Targeting roles in SOC analysis, IT support, cybersecurity, and blue team operations*
